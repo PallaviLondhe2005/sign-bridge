@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign Bridge: Live Prototype</title>
+<style>
+:root{--navy:#1F3864;--blue:#2E75B6;--soft:#E8F1FB;--warn:#FDF0E6;--warnt:#7A3A0B;--ok:#E6F4EA;--okt:#1E5B2F}
+body{margin:0;background:#F7F9FC;color:var(--navy);font-family:"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
+.wrap{max-width:860px;margin:0 auto;padding:18px 14px 40px}
+h1{margin:0;font-size:28px}h2{font-size:18px;margin:18px 0 8px}
+.sub{color:#4A5568;margin:4px 0 14px}
+.box{background:#fff;border:1px solid #B8C7DB;border-radius:14px;padding:14px;margin-bottom:14px}
+.cam{position:relative;max-width:480px;margin:0 auto;transform:scaleX(-1);background:#1B1B1B;border-radius:12px;overflow:hidden}
+.cam video{width:100%;display:block}.cam canvas{position:absolute;inset:0;width:100%;height:100%}
+button{font:inherit;min-height:44px;padding:0 16px;border-radius:10px;border:1.5px solid var(--blue);background:#fff;color:var(--navy);font-weight:700;cursor:pointer}
+button.main{background:var(--blue);color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
+button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.note{padding:10px 12px;border-radius:10px;background:var(--warn);color:var(--warnt);margin:10px 0}
+.ok{background:var(--ok);color:var(--okt)}
+#res{font-size:30px;font-weight:800;text-align:center;padding:14px;border-radius:12px;background:var(--soft);min-height:48px}
+small{color:#4A5568}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Sign Bridge: Live Prototype</h1>
+<p class="sub">Webcam → hand points (MediaPipe) → 63 numbers → k-Nearest-Neighbours model trained on <b>your own</b> sign samples → text + speech. Run this file in Chrome on a laptop with a webcam and internet (first load only).</p>
+
+<div class="box">
+<div class="row"><button class="main" id="start">1. Start camera and load hand tracking</button></div>
+<div id="status" class="note">Not started. Tap the button above and allow the camera.</div>
+<div class="cam"><video id="v" playsinline muted></video><canvas id="c"></canvas></div>
+</div>
+
+<div class="box">
+<h2>2. Record your signs (training data)</h2>
+<small>Pick a sign, tap Record, show that sign to the camera and move your hand slightly. 60 samples are taken. Record at least 3 or 4 different signs, always with the same hand.</small>
+<div class="grid" id="signs" style="margin-top:10px"></div>
+<div class="row">
+<button class="main" id="rec" disabled>Record 60 samples of the chosen sign</button>
+<button id="clear">Clear all samples</button>
+</div>
+</div>
+
+<div class="box">
+<h2>3. Recognition</h2>
+<div id="res">Waiting…</div>
+<div id="why" class="note ok">A sign is accepted only when the model is at least 70% sure and the sign stays the same for 10 frames. Then it is shown and spoken aloud.</div>
+</div>
+</div>
+
+<script type="module">
+import {HandLandmarker, FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const VOCAB=["hello","thank you","i love you","help","please","sorry","water","food","doctor","emergency","teacher","understand"];
+const $=id=>document.getElementById(id);
+let landmarker=null, running=false, lastT=-1, chosen=VOCAB[0];
+let samples=[], toRecord=0, recSign=null, candidate=null, same=0, lastSpoken=null, missing=0;
+try{samples=JSON.parse(localStorage.getItem("sb_samples")||"[]")}catch(e){samples=[]}
+
+// PURE-START (same logic as the Python / C++ prototype)
+function normalize(pts){
+  const w=pts[0]; let sc=0;
+  for(const p of pts) sc=Math.max(sc,Math.abs(p.x-w.x),Math.abs(p.y-w.y),Math.abs(p.z-w.z));
+  if(sc===0) sc=1;
+  const out=[];
+  for(const p of pts) out.push((p.x-w.x)/sc,(p.y-w.y)/sc,(p.z-w.z)/sc);
+  return out;
+}
+function knn(f,data,k=5){
+  if(data.length<k) return null;
+  const d=data.map(s=>{let t=0;for(let i=0;i<f.length;i++){const x=f[i]-s.f[i];t+=x*x}return [t,s.l]});
+  d.sort((a,b)=>a[0]-b[0]);
+  const v={};
+  d.slice(0,k).forEach(e=>{v[e[1]]=(v[e[1]]||0)+1});
+  let best=null,bv=0;
+  for(const l in v) if(v[l]>bv){best=l;bv=v[l]}
+  return {label:best,conf:bv/k};
+}
+// PURE-END
+
+function counts(){const c={};samples.forEach(s=>{c[s.l]=(c[s.l]||0)+1});return c}
+function drawButtons(){
+  const g=$("signs"),c=counts();g.innerHTML="";
+  VOCAB.forEach(s=>{
+    const b=document.createElement("button");
+    b.textContent=s+" ("+(c[s]||0)+")";
+    b.setAttribute("aria-pressed",s===chosen?"true":"false");
+    b.onclick=()=>{chosen=s;drawButtons()};
+    g.appendChild(b);
+  });
+}
+function status(t,ok){const s=$("status");s.textContent=t;s.className="note"+(ok?" ok":"")}
+function save(){try{localStorage.setItem("sb_samples",JSON.stringify(samples))}catch(e){}}
+function speak(t){try{if(window.speechSynthesis){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}}catch(e){}}
+
+$("start").onclick=async()=>{
+  $("start").disabled=true;
+  try{
+    status("Starting camera…");
+    const v=$("v");
+    v.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}});
+    await v.play();
+    const cv=$("c");cv.width=v.videoWidth;cv.height=v.videoHeight;
+    status("Loading hand tracking (needs internet)…");
+    const fs=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    const model="https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+    try{landmarker=await HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:model,delegate:"GPU"},runningMode:"VIDEO",numHands:1})}
+    catch(e){landmarker=await HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:model,delegate:"CPU"},runningMode:"VIDEO",numHands:1})}
+    running=true;$("rec").disabled=false;
+    status("Camera is running. Show your hand. Record some signs in step 2.",true);
+    requestAnimationFrame(loop);
+  }catch(e){
+    $("start").disabled=false;
+    status("Could not start: "+(e&&e.message?e.message:e)+". Check camera permission and internet, and open this file in Chrome.");
+  }
+};
+
+$("rec").onclick=()=>{
+  recSign=chosen;$("rec").disabled=true;
+  let n=3;status("Get ready to show “"+recSign+"” … "+n);
+  const t=setInterval(()=>{
+    n--;
+    if(n>0){status("Get ready to show “"+recSign+"” … "+n)}
+    else{clearInterval(t);toRecord=60;status("Recording “"+recSign+"”: show the sign and move your hand slightly")}
+  },1000);
+};
+$("clear").onclick=()=>{samples=[];save();drawButtons();$("res").textContent="Waiting…"};
+
+function draw(pts){
+  const cv=$("c"),x=cv.getContext("2d");
+  x.clearRect(0,0,cv.width,cv.height);
+  if(!pts) return;
+  x.fillStyle="#5BD1A0";
+  for(const p of pts){x.beginPath();x.arc(p.x*cv.width,p.y*cv.height,5,0,7);x.fill()}
+}
+
+function noHand(){
+  missing++;
+  if(missing>15){candidate=null;same=0;lastSpoken=null;if(!toRecord)$("res").textContent="Show your hand…"}
+}
+
+function handle(f){
+  missing=0;
+  if(toRecord>0){
+    samples.push({l:recSign,f:f.map(v=>Math.round(v*10000)/10000)});
+    toRecord--;
+    if(toRecord===0){save();drawButtons();$("rec").disabled=false;status("Recorded 60 samples of “"+recSign+"”. Record another sign, or just show a sign to test.",true)}
+    return;
+  }
+  const r=knn(f,samples);
+  if(!r){$("res").textContent="Record at least 5 samples first";return}
+  if(r.conf>=0.7){
+    same=(r.label===candidate)?same+1:1;candidate=r.label;
+    if(same>=10){
+      $("res").textContent=r.label+" ("+Math.round(r.conf*100)+"%)";
+      if(r.label!==lastSpoken){speak(r.label);lastSpoken=r.label}
+    }
+  }else{
+    candidate=null;same=0;$("res").textContent="Not sure (" + Math.round(r.conf*100) + "%), try again";
+  }
+}
+
+function loop(){
+  if(!running) return;
+  const v=$("v");
+  if(v.readyState>=2&&v.currentTime!==lastT){
+    lastT=v.currentTime;
+    const res=landmarker.detectForVideo(v,performance.now());
+    const pts=res.landmarks&&res.landmarks[0];
+    draw(pts);
+    if(pts) handle(normalize(pts)); else noHand();
+  }
+  requestAnimationFrame(loop);
+}
+
+drawButtons();
+</script>
+</body>
+</html>

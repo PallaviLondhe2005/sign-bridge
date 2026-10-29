@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign Bridge: Prototype</title>
+<style>
+:root{--bg:#F7F9FC;--card:#fff;--text:#1F3864;--muted:#4A5568;--accent:#2E75B6;--on-accent:#fff;--soft:#E8F1FB;--border:#9FB3CC;--warn:#FDF0E6;--warn-t:#7A3A0B;--ok:#E6F4EA;--ok-t:#1E5B2F;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10182A;--card:#18233B;--text:#E6EEF9;--muted:#A9B8CF;--accent:#5B9BD5;--on-accent:#0B1424;--soft:#1E2E4D;--border:#4A5E82;--warn:#3A2A1B;--warn-t:#F0C9A6;--ok:#1D3524;--ok-t:#A9DDB6}}
+:root[data-theme="dark"]{--bg:#10182A;--card:#18233B;--text:#E6EEF9;--muted:#A9B8CF;--accent:#5B9BD5;--on-accent:#0B1424;--soft:#1E2E4D;--border:#4A5E82;--warn:#3A2A1B;--warn-t:#F0C9A6;--ok:#1D3524;--ok-t:#A9DDB6}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Roboto,Arial,sans-serif;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:28px;margin:0}h2{font-size:20px;margin:0 0 8px}
+.sub{color:var(--muted);margin:4px 0 16px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+button,select,textarea,input{font:inherit}
+.tab,.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1.5px solid var(--accent);background:var(--card);color:var(--text);font-weight:700;cursor:pointer}
+.tab[aria-pressed="true"],.btn.main{background:var(--accent);color:var(--on-accent)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+label{display:block;font-weight:600;margin:0 0 6px}
+textarea,select{width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);padding:10px 12px;font-size:16px}
+textarea{min-height:80px;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.cards{display:flex;gap:10px;overflow-x:auto;padding:6px 2px 12px;min-height:90px}
+.c{flex:0 0 auto;min-width:96px;padding:12px 14px;border-radius:12px;border:2px solid var(--accent);background:var(--soft);text-align:center;font-weight:800;text-transform:uppercase}
+.c.l{min-width:56px;border-style:dashed;border-color:var(--warn-t);background:var(--warn);color:var(--warn-t)}
+.c small{display:block;font-weight:500;text-transform:none;font-size:12px;color:var(--muted)}
+.c.on{outline:4px solid var(--accent);transform:scale(1.06)}
+.note{padding:10px 12px;border-radius:10px;background:var(--warn);color:var(--warn-t);margin:12px 0;font-size:15px}
+.ok{background:var(--ok);color:var(--ok-t)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.grid .btn{font-weight:600;min-height:44px}
+.grid .btn[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.pass{color:var(--ok-t);font-weight:700}
+pre{background:var(--soft);padding:10px;border-radius:10px;overflow-x:auto;font-size:13px;margin:8px 0}
+.wide{overflow-x:auto}
+footer{color:var(--muted);font-size:13px;margin-top:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Sign Bridge</h1>
+<p class="sub">Multi-language sign language learning &amp; converter app: working prototype (SIH PS2)</p>
+<div class="row" style="margin-top:0"><div style="flex:1;min-width:200px"><label for="lang">Sign language</label>
+<select id="lang"><option>Indian Sign Language (ISL)</option><option>American Sign Language (ASL)</option></select></div></div>
+<div class="tabs" role="group" aria-label="Screens">
+<button class="tab" data-p="p1" aria-pressed="true">Speech/Text → Sign</button>
+<button class="tab" data-p="p2" aria-pressed="false">Sign → Speech</button>
+<button class="tab" data-p="p3" aria-pressed="false">Results</button>
+</div>
+
+<section id="p1" class="panel">
+<h2>Speech / Text → Sign</h2>
+<label for="txt">Type a sentence, or tap Speak</label>
+<textarea id="txt">Hello, I love you. Help me!</textarea>
+<div class="row">
+<button class="btn" id="mic">Speak</button>
+<button class="btn main" id="conv">Convert</button>
+<button class="btn" id="play">Play</button>
+<div style="min-width:150px"><label for="spd" style="margin:0 0 2px;font-size:13px">Speed</label>
+<select id="spd"><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select></div>
+</div>
+<div id="out" class="cards" aria-label="Sign sequence"></div>
+<div id="st" class="note ok" role="status" aria-live="polite">Tap Convert to see the sign sequence.</div>
+<p class="sub" style="font-size:14px">Solid cards are whole signs. Dashed cards are letters: words without a sign are spelled out letter by letter. Sign animation clips are placeholders in this prototype (cards stand in for the clips).</p>
+</section>
+
+<section id="p2" class="panel" hidden>
+<h2>Sign → Speech (simulation)</h2>
+<div class="note">The real camera recognition (MediaPipe hand points + Random Forest model) runs in the Python prototype. Here you can try the app’s decision rule and speech output: pick a sign and set how sure the model is.</div>
+<label>Sign shown to the camera</label>
+<div class="grid" id="signs"></div>
+<div style="margin-top:14px"><label for="conf">Model confidence: <span id="cv">85</span>%</label>
+<input type="range" id="conf" min="0" max="100" value="85" style="width:100%"></div>
+<div class="row"><button class="btn main" id="rec">Recognise</button></div>
+<div id="rs" class="note ok" role="status" aria-live="polite">Pick a sign, then tap Recognise.</div>
+<p class="sub" style="font-size:14px">Rule used by the app: a sign is spoken only when confidence is at least 70%. Otherwise it asks the user to try again.</p>
+</section>
+
+<section id="p3" class="panel" hidden>
+<h2>Prototype results</h2>
+<p class="sub">Real output of the Python prototype code (python test_prototype.py).</p>
+<div class="wide"><table>
+<tr><th>Test</th><th>What was checked</th><th>Result</th></tr>
+<tr><td>TC01</td><td>Hand points become 63 numbers, wrist at origin</td><td class="pass">PASS</td></tr>
+<tr><td>TC02</td><td>Same features for different hand position and size</td><td class="pass">PASS</td></tr>
+<tr><td>TC03</td><td>Confident match returns “thank you” (85%)</td><td class="pass">PASS</td></tr>
+<tr><td>TC04</td><td>Weak match (30%) returns no sign</td><td class="pass">PASS</td></tr>
+<tr><td>TC05</td><td>“hello help” gives 2 sign clips</td><td class="pass">PASS</td></tr>
+<tr><td>TC06</td><td>Word without a sign (“me”) is spelled as 2 letter clips</td><td class="pass">PASS</td></tr>
+<tr><td>TC07</td><td>Language switch (ASL) returns ASL clip</td><td class="pass">PASS</td></tr>
+<tr><td>TC08</td><td>“I love you, thank you!” gives 2 whole signs</td><td class="pass">PASS</td></tr>
+<tr><td>TC09</td><td>AI training pipeline: train, save, load, recognise</td><td class="pass">PASS</td></tr>
+</table></div>
+<p><strong>9 of 9 tests passed.</strong> Two bugs found by testing were fixed: unknown words were skipped, and “thank you” was spelled out letter by letter.</p>
+<h2 style="margin-top:16px">Model training output</h2>
+<pre>Signs learnt: doctor, emergency, food, hello, help, i love you,
+please, sorry, teacher, thank you, understand, water
+Accuracy on held-out samples: 100.0%
+Model saved to models/isl_model.pkl</pre>
+<div class="note">The 100% accuracy is on synthetic (generated) hand data. It shows the training pipeline works; it is not accuracy on real signs. Real accuracy will be measured after collecting webcam samples.</div>
+<h2>Built and still to do</h2>
+<p><strong>Built:</strong> hand points to 63 features, AI model with 70% confidence rule, phrase-aware text to sign with fingerspelling, ISL and ASL vocabularies, 12 signs, this website demo.<br>
+<strong>Still to do:</strong> collect real sign samples and train, test live camera recognition with different people and lighting, record sign animation clips, build the mobile app.</p>
+</section>
+
+<footer>Pallavi Maruti Londhe | CS2167 | RBT25CS069. Design Thinking Lab prototype.</footer>
+</div>
+<script>
+var VOCAB=["hello","thank you","i love you","help","please","sorry","water","food","doctor","emergency","teacher","understand"];
+function $(id){return document.getElementById(id)}
+function textToSign(t){
+  var w=t.toLowerCase().match(/[a-z']+/g)||[];
+  var signs=VOCAB.slice().sort(function(a,b){return b.split(" ").length-a.split(" ").length});
+  var items=[],spelled=[],i=0;
+  while(i<w.length){
+    var hit=0;
+    for(var s=0;s<signs.length&&!hit;s++){
+      var p=signs[s].split(" "),ok=true;
+      for(var k=0;k<p.length;k++){if(w[i+k]!==p[k]){ok=false;break}}
+      if(ok){items.push({k:"sign",t:signs[s]});hit=p.length}
+    }
+    if(hit){i+=hit}else{
+      var word=w[i];spelled.push(word);
+      for(var c=0;c<word.length;c++){if(/[a-z]/.test(word[c]))items.push({k:"letter",t:word[c],w:word})}
+      i++;
+    }
+  }
+  return{items:items,spelled:spelled};
+}
+var timer;
+function convert(){
+  clearInterval(timer);
+  var r=textToSign($("txt").value),out=$("out");
+  out.innerHTML="";
+  r.items.forEach(function(it){
+    var d=document.createElement("div");
+    d.className="c"+(it.k==="letter"?" l":"");
+    d.textContent=it.t;
+    if(it.k==="sign"){var s=document.createElement("small");s.textContent="sign";d.appendChild(s)}
+    out.appendChild(d);
+  });
+  var m=r.items.length?r.items.length+" cards."+(r.spelled.length?" Spelled out: "+r.spelled.join(", ")+".":" Every word had a sign."):"Type something first.";
+  $("st").textContent=m;
+}
+function play(){
+  clearInterval(timer);
+  var cards=[].slice.call($("out").children);
+  if(!cards.length){convert();cards=[].slice.call($("out").children);if(!cards.length)return}
+  var ms={slow:1400,normal:900,fast:450}[$("spd").value],n=0;
+  function step(){
+    cards.forEach(function(c){c.classList.remove("on")});
+    if(n>=cards.length){clearInterval(timer);$("st").textContent="Finished.";return}
+    cards[n].classList.add("on");
+    if(cards[n].scrollIntoView)cards[n].scrollIntoView({block:"nearest",inline:"center"});
+    n++;
+  }
+  step();timer=setInterval(step,ms);
+}
+$("conv").onclick=convert;$("play").onclick=play;
+$("mic").onclick=function(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){$("st").textContent="Voice input isn’t available in this browser. Please type the sentence.";return}
+  try{
+    var r=new SR();r.lang="en-IN";
+    r.onresult=function(e){$("txt").value=e.results[0][0].transcript;convert()};
+    r.onerror=function(){$("st").textContent="Couldn’t hear anything, or the microphone is blocked. Please type instead."};
+    r.start();$("st").textContent="Listening…";
+  }catch(e){$("st").textContent="Voice input could not start. Please type instead."}
+};
+var chosen="hello";
+var g=$("signs");
+VOCAB.forEach(function(s){
+  var b=document.createElement("button");
+  b.className="btn";b.textContent=s;b.setAttribute("aria-pressed",s===chosen?"true":"false");
+  b.onclick=function(){
+    chosen=s;[].slice.call(g.children).forEach(function(x){x.setAttribute("aria-pressed",x===b?"true":"false")});
+  };
+  g.appendChild(b);
+});
+$("conf").oninput=function(){$("cv").textContent=this.value};
+$("rec").onclick=function(){
+  var c=+$("conf").value,rs=$("rs");
+  if(c>=70){
+    rs.className="note ok";rs.textContent="Recognised: “"+chosen+"” ("+c+"% sure). Speaking it aloud.";
+    try{if(window.speechSynthesis){window.speechSynthesis.cancel();window.speechSynthesis.speak(new SpeechSynthesisUtterance(chosen))}}catch(e){}
+  }else{
+    rs.className="note";rs.textContent="Not sure ("+c+"% is below 70%). Please try the sign again.";
+  }
+};
+[].slice.call(document.querySelectorAll(".tab")).forEach(function(t){
+  t.onclick=function(){
+    ["p1","p2","p3"].forEach(function(id){$(id).hidden=(id!==t.getAttribute("data-p"))});
+    [].slice.call(document.querySelectorAll(".tab")).forEach(function(x){x.setAttribute("aria-pressed",x===t?"true":"false")});
+  };
+});
+convert();
+</script>
+</body>
+</html>
